@@ -1,6 +1,7 @@
 import streamlit as st
 import pandas as pd
 import plotly.graph_objects as go
+import streamlit.components.v1 as components
 
 # ==============================================================================
 # 1. PAGE CONFIGURATION & CUSTOM CSS (DARK INDUSTRIAL THEME)
@@ -373,7 +374,7 @@ st.markdown(
             MACHINE STATUS: {status_str}
         </div>
         <div style="font-size: 13px; font-weight: 600; opacity: 0.85;">
-            อัปเดตล่าสุด (Row 4): {ts_str}
+            อัปเดตล่าสุด (Row 4): {ts_str} &nbsp;|&nbsp; 🔄 Auto-Refresh: 30s
         </div>
     </div>
     """,
@@ -492,3 +493,17 @@ with bot_right:
         st.markdown(f'<div class="kpi-card"><div class="kpi-label">PF</div><div class="kpi-value">{float(current_rec["PF"]):.2f}</div></div>', unsafe_allow_html=True)
     with e5:
         st.markdown(f'<div class="kpi-card"><div class="kpi-label">kWh 380V</div><div class="kpi-value">{float(current_rec["KWH 380"]):.1f}</div></div>', unsafe_allow_html=True)
+
+# ==============================================================================
+# 6. AUTO-REFRESH EVERY 30 SECONDS
+# ==============================================================================
+components.html(
+    """
+    <script>
+        setTimeout(function() {
+            window.parent.location.reload();
+        }, 30000);
+    </script>
+    """,
+    height=0
+)
