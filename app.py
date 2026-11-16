@@ -14,26 +14,57 @@ st.set_page_config(
 
 SPREADSHEET_ID = "15AUScYWn0LNjaBD11wCdZb9pQFMQuDVOn--_pJVoXEQ"
 SHEET_NAME = "Sheet1"
-CSV_URL = f"https://docs.google.com/spreadsheets/d/{SPREADSHEET_ID}/gviz/tq?tqx=out:csv&sheet={SHEET_NAME}"
+# Standard export CSV URL preserves exact row structure without merging header rows
+CSV_URL = f"https://docs.google.com/spreadsheets/d/{SPREADSHEET_ID}/export?format=csv&gid=0"
+GVIZ_CSV_URL = f"https://docs.google.com/spreadsheets/d/{SPREADSHEET_ID}/gviz/tq?tqx=out:csv&sheet={SHEET_NAME}"
+
+STANDARD_COLUMNS = [
+    "Timestamp", "Count A", "Count B", "Count C", "Current",
+    "Stroke Threshold", "C_Run", "Voltage", "PF", "Power",
+    "KWH 220", "KWH 380", "Time High", "Time Low", "Machine Status",
+    "Calc D20", "T2", "T3", "T4", "T5",
+    "Manual Defect", "Manual Pcs/Min", "Manual Counter",
+    "Calc Avail", "Calc Perf", "Calc Qual", "Calc OEE"
+]
 
 # ==============================================================================
-# 2. DATA LOADING (AUTO-LOCATE 'Timestamp' HEADER ROW, ROW 4 = LATEST / MAX)
+# 2. DATA LOADING (DIRECT DATETIME ROW DETECTION - ROW 4 = LATEST / MAX)
 # ==============================================================================
 @st.cache_data(ttl=15)
 def load_sheet_data():
-    # Read raw CSV without assuming fixed row index and locate the row containing 'Timestamp'
-    raw_df = pd.read_csv(CSV_URL, header=None)
-    header_idx = None
-    for i in range(min(10, len(raw_df))):
-        row_vals = [str(v).strip() for v in raw_df.iloc[i].values]
-        if "Timestamp" in row_vals:
-            header_idx = i
-            break
-    if header_idx is None:
-        raise ValueError("ไม่พบหัวตาราง 'Timestamp' ใน 10 แถวแรกของ Sheet1")
+    raw_df = None
+    for url in [CSV_URL, GVIZ_CSV_URL]:
+        try:
+            temp_df = pd.read_csv(url, header=None, dtype=str)
+            if temp_df is not None and not temp_df.empty:
+                raw_df = temp_df
+                break
+        except Exception:
+            continue
 
-    df = raw_df.iloc[header_idx + 1:].copy()
-    df.columns = [str(v).strip() for v in raw_df.iloc[header_idx].values]
+    if raw_df is None or raw_df.empty:
+        raise ValueError("ไม่สามารถโหลดข้อมูล CSV จาก Google Sheets ได้ กรุณาตรวจสอบสิทธิ์การแชร์ไฟล์")
+
+    # Find the very first row where column 0 (Timestamp) is a valid date/time (Row 4 in Sheet1)
+    data_start_idx = None
+    for i in range(min(20, len(raw_df))):
+        val = str(raw_df.iloc[i, 0]).strip()
+        if not val or val.lower() == "nan":
+            continue
+        parsed = pd.to_datetime(val, format="%m/%d/%Y %H:%M:%S", errors="coerce")
+        if pd.isna(parsed):
+            parsed = pd.to_datetime(val, errors="coerce")
+        if pd.notna(parsed):
+            data_start_idx = i
+            break
+
+    if data_start_idx is None:
+        raise ValueError("ไม่พบข้อมูลวันที่/เวลาในคอลัมน์ A ของ Sheet1")
+
+    df = raw_df.iloc[data_start_idx:].copy()
+    num_cols_present = min(len(df.columns), len(STANDARD_COLUMNS))
+    df = df.iloc[:, :num_cols_present]
+    df.columns = STANDARD_COLUMNS[:num_cols_present]
     df = df.reset_index(drop=True)
 
     # Remove Count B and T2-T5 columns per specification
@@ -44,10 +75,10 @@ def load_sheet_data():
     df = df.dropna(subset=["Timestamp"]).copy()
 
     # Parse Timestamp (mm/dd/yyyy HH:MM:SS format in Google Sheets)
-    df["Parsed_DT"] = pd.to_datetime(df["Timestamp"], format="%m/%d/%Y %H:%M:%S", errors="coerce")
+    df["Parsed_DT"] = pd.to_datetime(df["Timestamp"].str.strip(), format="%m/%d/%Y %H:%M:%S", errors="coerce")
     mask_na = df["Parsed_DT"].isna()
     if mask_na.any():
-        df.loc[mask_na, "Parsed_DT"] = pd.to_datetime(df.loc[mask_na, "Timestamp"], errors="coerce")
+        df.loc[mask_na, "Parsed_DT"] = pd.to_datetime(df.loc[mask_na, "Timestamp"].str.strip(), errors="coerce")
 
     df = df.dropna(subset=["Parsed_DT"]).copy()
     df["Date_Only"] = df["Parsed_DT"].dt.date
@@ -62,7 +93,8 @@ def load_sheet_data():
     ]
     for col in num_cols:
         if col in df.columns:
-            df[col] = pd.to_numeric(df[col], errors="coerce").fillna(0)
+            cleaned = df[col].astype(str).str.replace(",", "", regex=False).str.strip()
+            df[col] = pd.to_numeric(cleaned, errors="coerce").fillna(0)
 
     return df
 
