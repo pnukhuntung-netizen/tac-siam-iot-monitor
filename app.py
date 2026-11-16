@@ -6,7 +6,7 @@ import plotly.graph_objects as go
 # 1. PAGE CONFIGURATION & CUSTOM CSS (DARK INDUSTRIAL THEME)
 # ==============================================================================
 st.set_page_config(
-    page_title="TAC SIAM CORP LTD. - Industrial IoT Monitor (V50.2)",
+    page_title="Industrial IoT Monitor (Ver50.2) TAC SIAM CORP LTD.",
     page_icon="🏭",
     layout="wide",
     initial_sidebar_state="collapsed"
@@ -14,7 +14,6 @@ st.set_page_config(
 
 SPREADSHEET_ID = "15AUScYWn0LNjaBD11wCdZb9pQFMQuDVOn--_pJVoXEQ"
 SHEET_NAME = "Sheet1"
-# Standard export CSV URL preserves exact row structure without merging header rows
 CSV_URL = f"https://docs.google.com/spreadsheets/d/{SPREADSHEET_ID}/export?format=csv&gid=0"
 GVIZ_CSV_URL = f"https://docs.google.com/spreadsheets/d/{SPREADSHEET_ID}/gviz/tq?tqx=out:csv&sheet={SHEET_NAME}"
 
@@ -186,15 +185,118 @@ if df.empty:
 latest_row4 = df.iloc[0]
 latest_date = latest_row4["Date_Only"]
 
+# --- STYLING INJECTION (FIX TOP BAR OVERLAP & HIGHLIGHT CONTROLS) ---
+st.markdown(
+    """
+    <style>
+        /* Hide Streamlit default white top header bar that overlaps controls */
+        header[data-testid="stHeader"] {
+            background-color: #0E1117 !important;
+            height: 2.2rem !important;
+        }
+        div[data-testid="stToolbar"] {
+            top: 0.2rem !important;
+            right: 0.5rem !important;
+        }
+        .stApp {
+            background-color: #0E1117;
+            color: #F8FAFC;
+        }
+        /* Style radio buttons & date input labels so they are crisp and clearly visible */
+        div[data-testid="stRadio"] > label,
+        div[data-testid="stDateInput"] > label {
+            color: #F8FAFC !important;
+            font-size: 14px !important;
+            font-weight: 700 !important;
+            margin-bottom: 4px !important;
+        }
+        div[data-testid="stRadio"] div[role="radiogroup"] {
+            background-color: #161B26;
+            border: 1px solid #334155;
+            border-radius: 8px;
+            padding: 6px 12px;
+        }
+        div[data-testid="stRadio"] div[role="radiogroup"] label p {
+            color: #F8FAFC !important;
+            font-weight: 600 !important;
+            font-size: 14px !important;
+        }
+        div[data-testid="stDateInput"] input {
+            background-color: #1E293B !important;
+            color: #FFFFFF !important;
+            border: 1px solid #38BDF8 !important;
+            border-radius: 8px !important;
+            font-weight: 700 !important;
+            font-size: 15px !important;
+        }
+        .kpi-card {
+            background-color: #161B26;
+            border: 1px solid #262F40;
+            border-radius: 8px;
+            padding: 12px 16px;
+            margin-bottom: 8px;
+        }
+        .kpi-label {
+            font-size: 12px;
+            color: #94A3B8;
+            margin-bottom: 4px;
+        }
+        .kpi-value {
+            font-size: 22px;
+            font-weight: 700;
+            color: #FFFFFF;
+        }
+        .count-a-hero-card {
+            background: linear-gradient(135deg, #162033 0%, #1E293B 100%);
+            border: 2px solid #38BDF8;
+            border-radius: 10px;
+            padding: 12px 16px;
+            box-shadow: 0 0 15px rgba(56, 189, 248, 0.2);
+        }
+        .count-a-hero-label {
+            font-size: 14px;
+            font-weight: 700;
+            color: #7DD3FC;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+        .count-a-hero-value {
+            font-size: 38px;
+            font-weight: 900;
+            color: #38BDF8;
+            line-height: 1.15;
+        }
+        .chart-header-box {
+            background-color: #161B26;
+            border: 1px solid #262F40;
+            border-bottom: none;
+            border-radius: 8px 8px 0 0;
+            padding: 12px 16px 4px 16px;
+        }
+        .max-badge {
+            border: 1px solid #F59E0B;
+            color: #FBBF24;
+            background-color: rgba(245, 158, 11, 0.1);
+            padding: 2px 8px;
+            border-radius: 4px;
+            font-size: 12px;
+            font-weight: 700;
+            float: right;
+        }
+    </style>
+    """,
+    unsafe_allow_html=True
+)
+
 # --- TOP HEADER BAR ---
-col_title, col_mode, col_date = st.columns([4.5, 2.5, 2.5])
+col_title, col_mode, col_date = st.columns([4.6, 2.6, 2.3])
 
 with col_title:
     st.markdown(
         """
-        <div style="padding-top: 6px;">
-            <span style="font-size: 24px; font-weight: 800; color: #F8FAFC;">
-                🏭 TAC SIAM CORP LTD. — Industrial IoT Monitor (V50.2)
+        <div style="padding-top: 14px;">
+            <span style="font-size: 23px; font-weight: 800; color: #F8FAFC; letter-spacing: 0.3px;">
+                🏭 Industrial IoT Monitor (Ver50.2) TAC SIAM CORP LTD.
             </span>
         </div>
         """,
@@ -204,85 +306,31 @@ with col_title:
 with col_mode:
     view_mode = st.radio(
         "รูปแบบหน้าจอ",
-        ["ปกติ (Normal)", "Present A4"],
+        ["ปกติ (Normal)", "เต็มจอ (Present A4)"],
         horizontal=True
     )
 
 with col_date:
     available_dates = sorted(df["Date_Only"].unique(), reverse=True)
     selected_date = st.date_input(
-        "คลิก เลือกวันที่",
+        "📅 คลิก เลือกวันที่",
         value=latest_date,
         min_value=min(available_dates),
         max_value=max(available_dates)
     )
 
-# --- STYLING INJECTION (NORMAL VS PRESENT A4) ---
-container_padding = "0.6rem 1.2rem" if view_mode == "Present A4" else "1.2rem 2rem"
+# Adjust padding dynamically based on selected view mode
+top_pad = "2.2rem"
+side_pad = "1.0rem" if view_mode == "เต็มจอ (Present A4)" else "2.0rem"
 st.markdown(
     f"""
     <style>
-        .stApp {{
-            background-color: #0E1117;
-            color: #F8FAFC;
-        }}
         .block-container {{
-            padding: {container_padding};
-            max-width: 100%;
-        }}
-        .kpi-card {{
-            background-color: #161B26;
-            border: 1px solid #262F40;
-            border-radius: 8px;
-            padding: 12px 16px;
-            margin-bottom: 8px;
-        }}
-        .kpi-label {{
-            font-size: 12px;
-            color: #94A3B8;
-            margin-bottom: 4px;
-        }}
-        .kpi-value {{
-            font-size: 22px;
-            font-weight: 700;
-            color: #FFFFFF;
-        }}
-        .count-a-hero-card {{
-            background: linear-gradient(135deg, #162033 0%, #1E293B 100%);
-            border: 2px solid #38BDF8;
-            border-radius: 10px;
-            padding: 12px 16px;
-            box-shadow: 0 0 15px rgba(56, 189, 248, 0.2);
-        }}
-        .count-a-hero-label {{
-            font-size: 14px;
-            font-weight: 700;
-            color: #7DD3FC;
-            text-transform: uppercase;
-            letter-spacing: 0.5px;
-        }}
-        .count-a-hero-value {{
-            font-size: 38px;
-            font-weight: 900;
-            color: #38BDF8;
-            line-height: 1.15;
-        }}
-        .chart-header-box {{
-            background-color: #161B26;
-            border: 1px solid #262F40;
-            border-bottom: none;
-            border-radius: 8px 8px 0 0;
-            padding: 12px 16px 4px 16px;
-        }}
-        .max-badge {{
-            border: 1px solid #F59E0B;
-            color: #FBBF24;
-            background-color: rgba(245, 158, 11, 0.1);
-            padding: 2px 8px;
-            border-radius: 4px;
-            font-size: 12px;
-            font-weight: 700;
-            float: right;
+            padding-top: {top_pad} !important;
+            padding-left: {side_pad} !important;
+            padding-right: {side_pad} !important;
+            padding-bottom: 1rem !important;
+            max-width: 100% !important;
         }}
     </style>
     """,
