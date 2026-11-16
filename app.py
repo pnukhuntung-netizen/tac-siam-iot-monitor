@@ -17,13 +17,24 @@ SHEET_NAME = "Sheet1"
 CSV_URL = f"https://docs.google.com/spreadsheets/d/{SPREADSHEET_ID}/gviz/tq?tqx=out:csv&sheet={SHEET_NAME}"
 
 # ==============================================================================
-# 2. DATA LOADING (ROW 3 = HEADER, ROW 4 = LATEST / MAX)
+# 2. DATA LOADING (AUTO-LOCATE 'Timestamp' HEADER ROW, ROW 4 = LATEST / MAX)
 # ==============================================================================
 @st.cache_data(ttl=15)
 def load_sheet_data():
-    # Read sheet with header=2 (Row 3 in Google Sheets is the standard column header)
-    df = pd.read_csv(CSV_URL, header=2)
-    df.columns = [str(c).strip() for c in df.columns]
+    # Read raw CSV without assuming fixed row index and locate the row containing 'Timestamp'
+    raw_df = pd.read_csv(CSV_URL, header=None)
+    header_idx = None
+    for i in range(min(10, len(raw_df))):
+        row_vals = [str(v).strip() for v in raw_df.iloc[i].values]
+        if "Timestamp" in row_vals:
+            header_idx = i
+            break
+    if header_idx is None:
+        raise ValueError("ไม่พบหัวตาราง 'Timestamp' ใน 10 แถวแรกของ Sheet1")
+
+    df = raw_df.iloc[header_idx + 1:].copy()
+    df.columns = [str(v).strip() for v in raw_df.iloc[header_idx].values]
+    df = df.reset_index(drop=True)
 
     # Remove Count B and T2-T5 columns per specification
     cols_to_drop = [c for c in ["Count B", "T2", "T3", "T4", "T5"] if c in df.columns]
