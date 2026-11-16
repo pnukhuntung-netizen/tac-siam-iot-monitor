@@ -1,7 +1,6 @@
 import streamlit as st
 import pandas as pd
 import plotly.graph_objects as go
-import streamlit.components.v1 as components
 
 # ==============================================================================
 # 1. PAGE CONFIGURATION & CUSTOM CSS (DARK INDUSTRIAL THEME)
@@ -30,7 +29,7 @@ STANDARD_COLUMNS = [
 # ==============================================================================
 # 2. DATA LOADING (DIRECT DATETIME ROW DETECTION - ROW 4 = LATEST / MAX)
 # ==============================================================================
-@st.cache_data(ttl=15)
+@st.cache_data(ttl=8)
 def load_sheet_data():
     raw_df = None
     for url in [CSV_URL, GVIZ_CSV_URL]:
@@ -170,27 +169,15 @@ def make_area_chart(x_dt, y_val, line_color, fill_rgba, y_unit=""):
     return fig
 
 # ==============================================================================
-# 5. MAIN DASHBOARD UI
+# 5. STYLING INJECTION (DARK THEME, NO WHITE FLASH, CRISP CONTROLS)
 # ==============================================================================
-try:
-    df = load_sheet_data()
-except Exception as e:
-    st.error(f"ไม่สามารถดึงข้อมูลจาก Google Sheets ได้: {e}")
-    st.stop()
-
-if df.empty:
-    st.warning("ไม่พบข้อมูลใน Sheet1")
-    st.stop()
-
-# Index 0 corresponds to Row 4 in Sheet1 (Latest / MAX record)
-latest_row4 = df.iloc[0]
-latest_date = latest_row4["Date_Only"]
-
-# --- STYLING INJECTION (FIX TOP BAR OVERLAP & HIGHLIGHT CONTROLS) ---
 st.markdown(
     """
     <style>
-        /* Hide Streamlit default white top header bar that overlaps controls */
+        html, body, [data-testid="stAppViewContainer"], .stApp {
+            background-color: #0E1117 !important;
+            color: #F8FAFC !important;
+        }
         header[data-testid="stHeader"] {
             background-color: #0E1117 !important;
             height: 2.2rem !important;
@@ -199,15 +186,20 @@ st.markdown(
             top: 0.2rem !important;
             right: 0.5rem !important;
         }
-        .stApp {
-            background-color: #0E1117;
-            color: #F8FAFC;
+        /* Prevent dimming/fade effect during seamless fragment rerun */
+        [data-testid="stAppViewBlockContainer"], .element-container, [data-testid="stVerticalBlock"] {
+            opacity: 1 !important;
+            transition: none !important;
         }
-        /* Style radio buttons & date input labels so they are crisp and clearly visible */
+        div[data-testid="stStatusWidget"] {
+            visibility: hidden !important;
+        }
+        /* Style radio buttons, selectbox & date input labels */
         div[data-testid="stRadio"] > label,
+        div[data-testid="stSelectbox"] > label,
         div[data-testid="stDateInput"] > label {
             color: #F8FAFC !important;
-            font-size: 14px !important;
+            font-size: 13px !important;
             font-weight: 700 !important;
             margin-bottom: 4px !important;
         }
@@ -215,12 +207,19 @@ st.markdown(
             background-color: #161B26;
             border: 1px solid #334155;
             border-radius: 8px;
-            padding: 6px 12px;
+            padding: 5px 10px;
         }
         div[data-testid="stRadio"] div[role="radiogroup"] label p {
             color: #F8FAFC !important;
             font-weight: 600 !important;
-            font-size: 14px !important;
+            font-size: 13px !important;
+        }
+        div[data-testid="stSelectbox"] div[data-baseweb="select"] > div {
+            background-color: #1E293B !important;
+            color: #FFFFFF !important;
+            border: 1px solid #38BDF8 !important;
+            border-radius: 8px !important;
+            font-weight: 700 !important;
         }
         div[data-testid="stDateInput"] input {
             background-color: #1E293B !important;
@@ -228,7 +227,7 @@ st.markdown(
             border: 1px solid #38BDF8 !important;
             border-radius: 8px !important;
             font-weight: 700 !important;
-            font-size: 15px !important;
+            font-size: 14px !important;
         }
         .kpi-card {
             background-color: #161B26;
@@ -289,14 +288,29 @@ st.markdown(
     unsafe_allow_html=True
 )
 
-# --- TOP HEADER BAR ---
-col_title, col_mode, col_date = st.columns([4.6, 2.6, 2.3])
+# ==============================================================================
+# 6. INITIAL LOAD & TOP HEADER CONTROLS
+# ==============================================================================
+try:
+    init_df = load_sheet_data()
+except Exception as e:
+    st.error(f"ไม่สามารถดึงข้อมูลจาก Google Sheets ได้: {e}")
+    st.stop()
+
+if init_df.empty:
+    st.warning("ไม่พบข้อมูลใน Sheet1")
+    st.stop()
+
+latest_date = init_df.iloc[0]["Date_Only"]
+available_dates = sorted(init_df["Date_Only"].unique(), reverse=True)
+
+col_title, col_mode, col_refresh, col_date = st.columns([4.1, 2.2, 1.5, 1.8])
 
 with col_title:
     st.markdown(
         """
         <div style="padding-top: 14px;">
-            <span style="font-size: 23px; font-weight: 800; color: #F8FAFC; letter-spacing: 0.3px;">
+            <span style="font-size: 21px; font-weight: 800; color: #F8FAFC; letter-spacing: 0.2px;">
                 🏭 Industrial IoT Monitor (Ver50.2) TAC SIAM CORP LTD.
             </span>
         </div>
@@ -311,8 +325,14 @@ with col_mode:
         horizontal=True
     )
 
+with col_refresh:
+    refresh_choice = st.selectbox(
+        "🔄 รีเฟรช (วินาที)",
+        ["10 วินาที", "20 วินาที", "30 วินาที", "ปิด (Off)"],
+        index=0
+    )
+
 with col_date:
-    available_dates = sorted(df["Date_Only"].unique(), reverse=True)
     selected_date = st.date_input(
         "📅 คลิก เลือกวันที่",
         value=latest_date,
@@ -338,172 +358,183 @@ st.markdown(
     unsafe_allow_html=True
 )
 
-day_df = df[df["Date_Only"] == selected_date].copy()
-if day_df.empty:
-    st.info(f"ไม่มีข้อมูลบันทึกในวันที่ {selected_date.strftime('%m/%d/%Y')}")
-    st.stop()
+# Map refresh selection to seconds for @st.fragment
+refresh_map = {
+    "10 วินาที": 10,
+    "20 วินาที": 20,
+    "30 วินาที": 30,
+    "ปิด (Off)": None
+}
+run_every_sec = refresh_map[refresh_choice]
 
-current_rec = day_df.iloc[0]
-chart_df = day_df.sort_values("Parsed_DT", ascending=True)
+# ==============================================================================
+# 7. SEAMLESS LIVE DASHBOARD FRAGMENT (NO WHITE SCREEN FLASH!)
+# ==============================================================================
+@st.fragment(run_every=run_every_sec)
+def render_live_dashboard(target_date, refresh_label):
+    try:
+        df = load_sheet_data()
+    except Exception as e:
+        st.error(f"ไม่สามารถดึงข้อมูลจาก Google Sheets ได้: {e}")
+        return
 
-# --- MACHINE STATUS BANNER ---
-status_str = str(current_rec["Machine Status"]).strip().upper()
-ts_str = current_rec["Parsed_DT"].strftime("%m/%d/%Y %H:%M:%S")
+    day_df = df[df["Date_Only"] == target_date].copy()
+    if day_df.empty:
+        st.info(f"ไม่มีข้อมูลบันทึกในวันที่ {target_date.strftime('%m/%d/%Y')}")
+        return
 
-if status_str in ["RUN", "STROKE"]:
-    dot_color = "#22C55E"
-    banner_bg = "#F1F5F9"
-    text_color = "#0F172A"
-elif status_str == "STANDBY":
-    dot_color = "#EAB308"
-    banner_bg = "#FEF9C3"
-    text_color = "#713F12"
-else:
-    dot_color = "#EF4444"
-    banner_bg = "#FEE2E2"
-    text_color = "#7F1D1D"
+    # Row 0 of filtered day_df is Row 4 of Sheet1 when viewing today (Latest / MAX)
+    current_rec = day_df.iloc[0]
+    chart_df = day_df.sort_values("Parsed_DT", ascending=True)
 
-st.markdown(
-    f"""
-    <div style="background-color: {banner_bg}; color: {text_color}; padding: 12px 20px; border-radius: 8px;
-                margin: 8px 0 14px 0; display: flex; justify-content: space-between; align-items: center;
-                font-weight: 800; font-size: 16px; box-shadow: 0 2px 6px rgba(0,0,0,0.3);">
-        <div>
-            <span style="display:inline-block; width:12px; height:12px; border-radius:50%;
-                         background-color:{dot_color}; margin-right:10px;"></span>
-            MACHINE STATUS: {status_str}
-        </div>
-        <div style="font-size: 13px; font-weight: 600; opacity: 0.85;">
-            อัปเดตล่าสุด (Row 4): {ts_str} &nbsp;|&nbsp; 🔄 Auto-Refresh: 30s
-        </div>
-    </div>
-    """,
-    unsafe_allow_html=True
-)
+    # --- MACHINE STATUS BANNER ---
+    status_str = str(current_rec["Machine Status"]).strip().upper()
+    ts_str = current_rec["Parsed_DT"].strftime("%m/%d/%Y %H:%M:%S")
 
-# --- ROW 1: OEE KPI CARDS ---
-c1, c2, c3, c4 = st.columns(4)
-oee_val = float(current_rec["Calc OEE"])
-avail_val = float(current_rec["Calc Avail"])
-perf_val = float(current_rec["Calc Perf"])
-qual_val = float(current_rec["Calc Qual"])
+    if status_str in ["RUN", "STROKE"]:
+        dot_color = "#22C55E"
+        banner_bg = "#F1F5F9"
+        text_color = "#0F172A"
+    elif status_str == "STANDBY":
+        dot_color = "#EAB308"
+        banner_bg = "#FEF9C3"
+        text_color = "#713F12"
+    else:
+        dot_color = "#EF4444"
+        banner_bg = "#FEE2E2"
+        text_color = "#7F1D1D"
 
-with c1:
-    st.markdown(f'<div class="kpi-card"><div class="kpi-label">OEE</div><div class="kpi-value">{oee_val:.1f}%</div></div>', unsafe_allow_html=True)
-with c2:
-    st.markdown(f'<div class="kpi-card"><div class="kpi-label">Availability (A)</div><div class="kpi-value">{avail_val:.1f}%</div></div>', unsafe_allow_html=True)
-with c3:
-    st.markdown(f'<div class="kpi-card"><div class="kpi-label">Performance (P)</div><div class="kpi-value">{perf_val:.1f}%</div></div>', unsafe_allow_html=True)
-with c4:
-    st.markdown(f'<div class="kpi-card"><div class="kpi-label">Quality (Q)</div><div class="kpi-value">{qual_val:.1f}%</div></div>', unsafe_allow_html=True)
-
-# --- ROW 2: OEE GAUGE CHARTS ---
-g1, g2, g3, g4 = st.columns(4)
-with g1:
-    st.plotly_chart(make_gauge("OEE", oee_val), use_container_width=True, config={"displayModeBar": False})
-with g2:
-    st.plotly_chart(make_gauge("Availability", avail_val), use_container_width=True, config={"displayModeBar": False})
-with g3:
-    st.plotly_chart(make_gauge("Performance", perf_val), use_container_width=True, config={"displayModeBar": False})
-with g4:
-    st.plotly_chart(make_gauge("Quality", qual_val), use_container_width=True, config={"displayModeBar": False})
-
-# --- ROW 3: TWO AREA CHARTS ---
-ch1, ch2 = st.columns(2)
-
-count_a_latest = int(current_rec["Count A"])
-count_a_max = int(day_df["Count A"].max())
-curr_latest = float(current_rec["Current"])
-curr_max = float(day_df["Current"].max())
-
-with ch1:
     st.markdown(
         f"""
-        <div class="chart-header-box">
-            <span class="max-badge">MAX: {count_a_max:,} pcs</span>
-            <div style="font-size: 15px; font-weight: 700; color: #F8FAFC;">Count A Progression</div>
-            <div style="font-size: 12px; color: #94A3B8;">ยอดการนับชิ้นงานจากเริ่มต้นจนถึงล่าสุด (+{count_a_latest:,} pcs)</div>
-            <div style="font-size: 32px; font-weight: 900; color: #38BDF8; margin-top: 2px;">
-                {count_a_latest:,} <span style="font-size: 14px; font-weight: 600; color: #94A3B8;">pcs</span>
+        <div style="background-color: {banner_bg}; color: {text_color}; padding: 12px 20px; border-radius: 8px;
+                    margin: 8px 0 14px 0; display: flex; justify-content: space-between; align-items: center;
+                    font-weight: 800; font-size: 16px; box-shadow: 0 2px 6px rgba(0,0,0,0.3);">
+            <div>
+                <span style="display:inline-block; width:12px; height:12px; border-radius:50%;
+                             background-color:{dot_color}; margin-right:10px;"></span>
+                MACHINE STATUS: {status_str}
+            </div>
+            <div style="font-size: 13px; font-weight: 600; opacity: 0.85;">
+                อัปเดตล่าสุด (Row 4): {ts_str} &nbsp;|&nbsp; ⚡ Live Sync: {refresh_label}
             </div>
         </div>
         """,
         unsafe_allow_html=True
     )
-    st.plotly_chart(
-        make_area_chart(chart_df["Parsed_DT"], chart_df["Count A"], "#38BDF8", "rgba(56, 189, 248, 0.22)", "pcs"),
-        use_container_width=True,
-        config={"displayModeBar": False}
-    )
 
-with ch2:
-    st.markdown(
-        f"""
-        <div class="chart-header-box">
-            <span class="max-badge">MAX: {curr_max:.2f} A</span>
-            <div style="font-size: 15px; font-weight: 700; color: #F8FAFC;">Current Machine On/Off</div>
-            <div style="font-size: 12px; color: #94A3B8;">ระดับกระแสไฟฟ้าขณะเปิด-ปิดเครื่อง (C_Run: {current_rec['C_Run']:.2f} A)</div>
-            <div style="font-size: 32px; font-weight: 900; color: #22C55E; margin-top: 2px;">
-                {curr_latest:.2f} <span style="font-size: 14px; font-weight: 600; color: #94A3B8;">A</span>
-            </div>
-        </div>
-        """,
-        unsafe_allow_html=True
-    )
-    st.plotly_chart(
-        make_area_chart(chart_df["Parsed_DT"], chart_df["Current"], "#22C55E", "rgba(34, 197, 94, 0.22)", "A"),
-        use_container_width=True,
-        config={"displayModeBar": False}
-    )
+    # --- ROW 1: OEE KPI CARDS ---
+    c1, c2, c3, c4 = st.columns(4)
+    oee_val = float(current_rec["Calc OEE"])
+    avail_val = float(current_rec["Calc Avail"])
+    perf_val = float(current_rec["Calc Perf"])
+    qual_val = float(current_rec["Calc Qual"])
 
-# --- ROW 4: BOTTOM SUMMARY CARDS ---
-bot_left, bot_right = st.columns([1.15, 1.35])
+    with c1:
+        st.markdown(f'<div class="kpi-card"><div class="kpi-label">OEE</div><div class="kpi-value">{oee_val:.1f}%</div></div>', unsafe_allow_html=True)
+    with c2:
+        st.markdown(f'<div class="kpi-card"><div class="kpi-label">Availability (A)</div><div class="kpi-value">{avail_val:.1f}%</div></div>', unsafe_allow_html=True)
+    with c3:
+        st.markdown(f'<div class="kpi-card"><div class="kpi-label">Performance (P)</div><div class="kpi-value">{perf_val:.1f}%</div></div>', unsafe_allow_html=True)
+    with c4:
+        st.markdown(f'<div class="kpi-card"><div class="kpi-label">Quality (Q)</div><div class="kpi-value">{qual_val:.1f}%</div></div>', unsafe_allow_html=True)
 
-with bot_left:
-    st.markdown('<div style="font-size: 14px; font-weight: 700; color: #E2E8F0; margin: 6px 0;">📦 การผลิต (Production)</div>', unsafe_allow_html=True)
-    p1, p2, p3, p4 = st.columns([1.45, 0.85, 0.85, 0.95])
-    with p1:
+    # --- ROW 2: OEE GAUGE CHARTS ---
+    g1, g2, g3, g4 = st.columns(4)
+    with g1:
+        st.plotly_chart(make_gauge("OEE", oee_val), use_container_width=True, config={"displayModeBar": False}, key="gauge_oee")
+    with g2:
+        st.plotly_chart(make_gauge("Availability", avail_val), use_container_width=True, config={"displayModeBar": False}, key="gauge_avail")
+    with g3:
+        st.plotly_chart(make_gauge("Performance", perf_val), use_container_width=True, config={"displayModeBar": False}, key="gauge_perf")
+    with g4:
+        st.plotly_chart(make_gauge("Quality", qual_val), use_container_width=True, config={"displayModeBar": False}, key="gauge_qual")
+
+    # --- ROW 3: TWO AREA CHARTS ---
+    ch1, ch2 = st.columns(2)
+
+    count_a_latest = int(current_rec["Count A"])
+    count_a_max = int(day_df["Count A"].max())
+    curr_latest = float(current_rec["Current"])
+    curr_max = float(day_df["Current"].max())
+
+    with ch1:
         st.markdown(
             f"""
-            <div class="count-a-hero-card">
-                <div class="count-a-hero-label">Count A (Pcs)</div>
-                <div class="count-a-hero-value">{count_a_latest:,}</div>
+            <div class="chart-header-box">
+                <span class="max-badge">MAX: {count_a_max:,} pcs</span>
+                <div style="font-size: 15px; font-weight: 700; color: #F8FAFC;">Count A Progression</div>
+                <div style="font-size: 12px; color: #94A3B8;">ยอดการนับชิ้นงานจากเริ่มต้นจนถึงล่าสุด (+{count_a_latest:,} pcs)</div>
+                <div style="font-size: 32px; font-weight: 900; color: #38BDF8; margin-top: 2px;">
+                    {count_a_latest:,} <span style="font-size: 14px; font-weight: 600; color: #94A3B8;">pcs</span>
+                </div>
             </div>
             """,
             unsafe_allow_html=True
         )
-    with p2:
-        st.markdown(f'<div class="kpi-card"><div class="kpi-label">Stroke (C)</div><div class="kpi-value">{int(current_rec["Count C"]):,}</div></div>', unsafe_allow_html=True)
-    with p3:
-        st.markdown(f'<div class="kpi-card"><div class="kpi-label">Defects</div><div class="kpi-value">{int(current_rec["Manual Defect"]):,}</div></div>', unsafe_allow_html=True)
-    with p4:
-        inv_hz = float(current_rec["Calc D20"]) / 100.0
-        st.markdown(f'<div class="kpi-card"><div class="kpi-label">Inverter Hz</div><div class="kpi-value">{inv_hz:.2f}</div></div>', unsafe_allow_html=True)
+        st.plotly_chart(
+            make_area_chart(chart_df["Parsed_DT"], chart_df["Count A"], "#38BDF8", "rgba(56, 189, 248, 0.22)", "pcs"),
+            use_container_width=True,
+            config={"displayModeBar": False},
+            key="area_count_a"
+        )
 
-with bot_right:
-    st.markdown('<div style="font-size: 14px; font-weight: 700; color: #E2E8F0; margin: 6px 0;">⚡ ระบบไฟฟ้า (Electrical & Energy)</div>', unsafe_allow_html=True)
-    e1, e2, e3, e4, e5 = st.columns(5)
-    with e1:
-        st.markdown(f'<div class="kpi-card"><div class="kpi-label">Volt</div><div class="kpi-value">{float(current_rec["Voltage"]):.1f}V</div></div>', unsafe_allow_html=True)
-    with e2:
-        st.markdown(f'<div class="kpi-card"><div class="kpi-label">Amp</div><div class="kpi-value">{curr_latest:.2f}A</div></div>', unsafe_allow_html=True)
-    with e3:
-        st.markdown(f'<div class="kpi-card"><div class="kpi-label">Power</div><div class="kpi-value">{float(current_rec["Power"]):.2f}</div></div>', unsafe_allow_html=True)
-    with e4:
-        st.markdown(f'<div class="kpi-card"><div class="kpi-label">PF</div><div class="kpi-value">{float(current_rec["PF"]):.2f}</div></div>', unsafe_allow_html=True)
-    with e5:
-        st.markdown(f'<div class="kpi-card"><div class="kpi-label">kWh 380V</div><div class="kpi-value">{float(current_rec["KWH 380"]):.1f}</div></div>', unsafe_allow_html=True)
+    with ch2:
+        st.markdown(
+            f"""
+            <div class="chart-header-box">
+                <span class="max-badge">MAX: {curr_max:.2f} A</span>
+                <div style="font-size: 15px; font-weight: 700; color: #F8FAFC;">Current Machine On/Off</div>
+                <div style="font-size: 12px; color: #94A3B8;">ระดับกระแสไฟฟ้าขณะเปิด-ปิดเครื่อง (C_Run: {current_rec['C_Run']:.2f} A)</div>
+                <div style="font-size: 32px; font-weight: 900; color: #22C55E; margin-top: 2px;">
+                    {curr_latest:.2f} <span style="font-size: 14px; font-weight: 600; color: #94A3B8;">A</span>
+                </div>
+            </div>
+            """,
+            unsafe_allow_html=True
+        )
+        st.plotly_chart(
+            make_area_chart(chart_df["Parsed_DT"], chart_df["Current"], "#22C55E", "rgba(34, 197, 94, 0.22)", "A"),
+            use_container_width=True,
+            config={"displayModeBar": False},
+            key="area_current"
+        )
 
-# ==============================================================================
-# 6. AUTO-REFRESH EVERY 30 SECONDS
-# ==============================================================================
-components.html(
-    """
-    <script>
-        setTimeout(function() {
-            window.parent.location.reload();
-        }, 30000);
-    </script>
-    """,
-    height=0
-)
+    # --- ROW 4: BOTTOM SUMMARY CARDS ---
+    bot_left, bot_right = st.columns([1.15, 1.35])
+
+    with bot_left:
+        st.markdown('<div style="font-size: 14px; font-weight: 700; color: #E2E8F0; margin: 6px 0;">📦 การผลิต (Production)</div>', unsafe_allow_html=True)
+        p1, p2, p3, p4 = st.columns([1.45, 0.85, 0.85, 0.95])
+        with p1:
+            st.markdown(
+                f"""
+                <div class="count-a-hero-card">
+                    <div class="count-a-hero-label">Count A (Pcs)</div>
+                    <div class="count-a-hero-value">{count_a_latest:,}</div>
+                </div>
+                """,
+                unsafe_allow_html=True
+            )
+        with p2:
+            st.markdown(f'<div class="kpi-card"><div class="kpi-label">Stroke (C)</div><div class="kpi-value">{int(current_rec["Count C"]):,}</div></div>', unsafe_allow_html=True)
+        with p3:
+            st.markdown(f'<div class="kpi-card"><div class="kpi-label">Defects</div><div class="kpi-value">{int(current_rec["Manual Defect"]):,}</div></div>', unsafe_allow_html=True)
+        with p4:
+            inv_hz = float(current_rec["Calc D20"]) / 100.0
+            st.markdown(f'<div class="kpi-card"><div class="kpi-label">Inverter Hz</div><div class="kpi-value">{inv_hz:.2f}</div></div>', unsafe_allow_html=True)
+
+    with bot_right:
+        st.markdown('<div style="font-size: 14px; font-weight: 700; color: #E2E8F0; margin: 6px 0;">⚡ ระบบไฟฟ้า (Electrical & Energy)</div>', unsafe_allow_html=True)
+        e1, e2, e3, e4, e5 = st.columns(5)
+        with e1:
+            st.markdown(f'<div class="kpi-card"><div class="kpi-label">Volt</div><div class="kpi-value">{float(current_rec["Voltage"]):.1f}V</div></div>', unsafe_allow_html=True)
+        with e2:
+            st.markdown(f'<div class="kpi-card"><div class="kpi-label">Amp</div><div class="kpi-value">{curr_latest:.2f}A</div></div>', unsafe_allow_html=True)
+        with e3:
+            st.markdown(f'<div class="kpi-card"><div class="kpi-label">Power</div><div class="kpi-value">{float(current_rec["Power"]):.2f}</div></div>', unsafe_allow_html=True)
+        with e4:
+            st.markdown(f'<div class="kpi-card"><div class="kpi-label">PF</div><div class="kpi-value">{float(current_rec["PF"]):.2f}</div></div>', unsafe_allow_html=True)
+        with e5:
+            st.markdown(f'<div class="kpi-card"><div class="kpi-label">kWh 380V</div><div class="kpi-value">{float(current_rec["KWH 380"]):.1f}</div></div>', unsafe_allow_html=True)
+
+render_live_dashboard(selected_date, refresh_choice)
